@@ -39,9 +39,12 @@ static int aac_init(rad_codec_ctx_t *ctx, rss_config_t *cfg, int sample_rate)
 	if (!st)
 		return -1;
 
+	/* ISO/IEC 14496-3 budgets 6144 bits per channel per 1024-sample
+	 * frame, so the ceiling scales with the sample rate. */
+	const int max_bitrate = sample_rate * 6144 / 1024;
 	int bitrate = rss_config_get_int(cfg, "audio", "bitrate", 128000);
-	if (bitrate > 256000)
-		bitrate = 256000;
+	if (bitrate > max_bitrate)
+		bitrate = max_bitrate;
 
 	/* HE-AAC needs Fs >= 32kHz (the Fs/2 SBR core collapses below);
 	 * clamp an explicit request rather than failing encoder open. */
@@ -61,7 +64,12 @@ static int aac_init(rad_codec_ctx_t *ctx, rss_config_t *cfg, int sample_rate)
 	}
 
 	faac_params params;
+	/* caller_size arrived with faac ABI 2. */
+#if defined(FAAC_VERSION_MAJOR) && (FAAC_VERSION_MAJOR >= 2)
+	faac_status status = faac_params_init(&params, (uint32_t)sizeof(params));
+#else
 	faac_status status = faac_params_init(&params);
+#endif
 	if (status != FAAC_OK) {
 		free(st);
 		return -1;
